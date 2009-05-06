@@ -1,0 +1,153 @@
+= Postgresql Complex Types
+
+It is a project for supporting extra features of PostgreSQL database in ActiveRecord, such as having:
+
+1. user defined types http://www.postgresql.org/docs/8.3/interactive/rowtypes.html
+2. arrays http://www.postgresql.org/docs/8.3/interactive/arrays.html
+3. and arrays of composite types
+
+This project is primarily for reading such complex data, stored in tables via raw SQL.
+However, if You need to write complex data, feel free to contact me: we'll add this capability.
+
+I'm using this plugin for caching complex joined queries directly in database. It can speed select from 400ms up to 5ms.
+
+Two parsers for PostgreSQL output are used: pure Ruby one and RubyInline-based parser on C.
+
+= Contacts
+
+Author: Max Lapshin
+
+Email: max@maxidoors.ru
+
+ICQ: 64541170
+
+Jabber: max@maxidoors.ru
+
+Website: http://github.com/maxlapshin/postgresql_complex_types
+
+= Usage example:
+
+db/migrate/20090402163235_create_cached_properties.rb:
+
+  class CreateCachedProperties < ActiveRecord::Migration
+    def self.up
+      execute "CREATE TYPE cached_property AS (name varchar(40), values varchar[], data_format varchar(10), description varchar(255));"
+      execute "ALTER TABLE devices ADD COLUMN cached_properties cached_property[];"
+      Device.cache_properties
+    end
+
+    def self.down
+    end
+  end
+  
+
+app/models/device.rb:
+
+  class Device < ActiveRecord::Base
+    def self.cache_properties
+      sql = <<-SQL
+      update devices set cached_properties = 
+      ARRAY(
+               SELECT ROW(t.name, t.value, t.data_format, t.description)::cached_property FROM
+                   (select FIRST(property_infos.name) AS name, 
+                           array_accum(device_properties.value) as value, 
+                           FIRST(property_infos.data_format) as data_format,
+                           FIRST(property_infos.description) as description
+                           from device_properties 
+                           left outer join property_infos on (property_infos.id = property_info_id) 
+                           where device_id = devices.id
+                           group by device_properties.property_info_id
+                           ORDER BY FIRST(property_infos.xorder)
+                   ) as t 
+               ) 
+      SQL
+      connection.execute(sql)
+    end
+  end
+  
+  
+Here, in example, mentioned two my own custom functions:
+  
+FIRST:
+  
+  class AddFirstAggregate < ActiveRecord::Migration
+    def self.up
+      return unless adapter_name == "PostgreSQL"
+      execute <<-EOF
+      CREATE OR REPLACE FUNCTION public._first(anyelement, anyelement)
+      RETURNS anyelement AS $$
+        SELECT CASE 
+          WHEN $1 IS NULL THEN $2
+          ELSE $1
+        END
+      $$ IMMUTABLE LANGUAGE SQL;
+
+      DROP AGGREGATE IF EXISTS public.first(anyelement);
+      CREATE AGGREGATE public.first(anyelement) (
+        sfunc = public._first,
+        stype = anyelement
+      );
+      EOF
+    end
+
+    def self.down
+      return unless adapter_name == "PostgreSQL"
+      execute <<-EOF
+        DROP AGGREGATE IF EXISTS public.first(anyelement);
+        DROP FUNCTION public._first(anyelement, anyelement)
+      EOF
+    end
+  end
+  
+and array_accum:
+
+  class AddArrayAccumAggregate < ActiveRecord::Migration
+    def self.up
+      execute "CREATE AGGREGATE public.array_accum (anyelement) (sfunc = array_append,stype = anyarray, initcond = '{}');"
+    end
+
+    def self.down
+      execute "DROP AGGREGATE public.array_accum (anyelement);"
+    end
+  end
+  
+
+Using is very simple. You can provide Your own class for handling user type:
+
+  lib/cached_property.rb:
+  CachedProperty = Struct.new(:name, :values, :data_format, :description)
+
+  class CachedProperty
+    include PostgresComplexTypes::StructDecoder
+    def self.postprocess(struct)
+      if struct.data_format == "number"
+        struct.values = struct.values.map do |v| 
+          v = v.to_f
+          if (v - v.round).abs < 0.00001
+            v = v.to_i
+          end
+          v
+        end.compact.sort.map {|v| v.to_s }
+      elsif struct.data_format == "boolean"
+        struct.values = struct.values.map {|v| v == "t"}.map {|v| v ? "yes" : "no"}
+      end
+
+      struct
+    end
+  end
+  
+  
+Important is only method postprocess. You can do what You want with extracted struct.
+
+= Results:
+
+  >> Device.first
+  => #<Device id: 3068, title: "Canon EOS 400D", ..., cached_properties: [#<struct CachedProperty name="fullname", values=["Canon EOS 400D"], data_format="string", description="Full name">, #<struct CachedProperty name="lens_mount", values=["Canon EF", "EF-S"], data_format="string", description="Lens mount">, #<struct CachedProperty name="pix", values=["10.1"], data_format="number", description="Megapixels">, ...
+
+
+Problems:
+1. Not finished schema dumper. Cannot dump arrays into schema.rb, yet.
+
+Plans:
+1. Support for datamapper, because of easiness of declaring user defined types in it;
+2. support for writing complex types.
