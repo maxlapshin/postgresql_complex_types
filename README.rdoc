@@ -145,6 +145,8 @@ Important is only method postprocess. You can do what You want with extracted st
   => #<Device id: 3068, title: "Canon EOS 400D", ..., cached_properties: [#<struct CachedProperty name="fullname", values=["Canon EOS 400D"], data_format="string", description="Full name">, #<struct CachedProperty name="lens_mount", values=["Canon EF", "EF-S"], data_format="string", description="Lens mount">, #<struct CachedProperty name="pix", values=["10.1"], data_format="number", description="Megapixels">, ...
 
 
+
+
 Problems:
 1. Not finished schema dumper. Cannot dump arrays into schema.rb, yet.
 
