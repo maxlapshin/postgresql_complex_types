@@ -72,8 +72,10 @@ class PostgresExtractor
   
   def extract_array_value
     in_quotes = false
+    has_quoting = false
     if current == QUOTE
       in_quotes = true
+      has_quoting = true
       step
     end
     array_item = ""
@@ -88,11 +90,13 @@ class PostgresExtractor
       end
 
       if current == BACKSLASH
+        has_quoting = true
         step
       end
       array_item << self.current
       step
     end
+    return @result = nil if !has_quoting && 0 == array_item.casecmp('NULL')
     recursive_parse_field(array_item)
   end
   
@@ -100,19 +104,21 @@ class PostgresExtractor
     array = []
     # while !eov? do
     loop do
+      extract_row_value
+      array << @result
       current = self.current
       step if current == COMMA
       break if current == RIGHT_BRACKET
-      extract_row_value
-      array << @result
-    end
+    end unless self.current == RIGHT_BRACKET
     @result = array
   end
   
   def extract_row_value
     in_quotes = false
+    has_quoting = false
     if current == QUOTE
       in_quotes = true
+      has_quoting = true
       step
     end
     row_item = ""
@@ -121,6 +127,7 @@ class PostgresExtractor
       current = self.current
       if in_quotes && current == QUOTE && @value[@ptr + 1] == QUOTE
         row_item << QUOTE
+        has_quoting = true
         step
         step
         next
@@ -131,12 +138,17 @@ class PostgresExtractor
       end
       break if !in_quotes && (current == COMMA || current == RIGHT_BRACKET) # конец строчки
       if current == BACKSLASH
+        has_quoting = true
         step
       end
       row_item << self.current
       step
     end
-    recursive_parse_field(row_item)
+    if !has_quoting && row_item.empty?
+      @result = nil
+    else
+      recursive_parse_field(row_item)
+    end
   end
   
 end

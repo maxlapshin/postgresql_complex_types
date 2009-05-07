@@ -82,11 +82,13 @@ void recursive_parse_field(VALUE self, VALUE new_value);
       int in_quotes = 0;
       VALUE value;
       VALUE array_item = rb_str_new2("");
+      int has_quoting = 0;
       Data_Get_Struct(self, PostgresParserData, data);
       value = rb_ivar_get(self, data->value);
 
       if(CURRENT == QUOTE) {
         in_quotes = 1;
+        has_quoting = 1;
         data->ptr++;
       }
       for(; data->ptr < RSTRING_LEN(value) ; ) {
@@ -99,12 +101,16 @@ void recursive_parse_field(VALUE self, VALUE new_value);
         }
         
         if(CURRENT == BACKSLASH) {
+          has_quoting = 1;
           data->ptr++;
         }
         rb_str_buf_cat(array_item, RSTRING(value)->ptr+data->ptr, 1);
         data->ptr++;
       }
-      recursive_parse_field(self, array_item);
+      if(!has_quoting && 0 == strcasecmp(RSTRING(array_item)->ptr, "NULL")) 
+        rb_ivar_set(self, data->result, Qnil);
+      else
+        recursive_parse_field(self, array_item);
     }
     
     void extract_row(VALUE self) {
@@ -113,12 +119,16 @@ void recursive_parse_field(VALUE self, VALUE new_value);
       VALUE value;
       Data_Get_Struct(self, PostgresParserData, data);
       value = rb_ivar_get(self, data->value);
-      for(; data->ptr < RSTRING_LEN(value) && CURRENT != RIGHT_BRACKET; ) {
+      if(CURRENT != RIGHT_BRACKET)
+      for(; data->ptr < RSTRING_LEN(value) ; ) {
+        extract_row_value(self);
+        rb_ary_push(array, rb_ivar_get(self, data->result));
+        if(CURRENT == RIGHT_BRACKET) {
+          break;
+        }
         if(CURRENT == COMMA) {
           data->ptr++;
         }
-        extract_row_value(self);
-        rb_ary_push(array, rb_ivar_get(self, data->result));
       }
       rb_ivar_set(self, data->result, array);
     }
@@ -126,6 +136,7 @@ void recursive_parse_field(VALUE self, VALUE new_value);
     void extract_row_value(VALUE self) {
       struct PostgresParserData *data;
       int in_quotes = 0;
+      int has_quoting = 0;
       VALUE value;
       VALUE row_item = rb_str_new2("");
       Data_Get_Struct(self, PostgresParserData, data);
@@ -133,12 +144,14 @@ void recursive_parse_field(VALUE self, VALUE new_value);
 
       if(CURRENT == QUOTE) {
         in_quotes = 1;
+        has_quoting = 1;
         data->ptr++;
       }
       for(; data->ptr < RSTRING_LEN(value) ; ) {
 
         if(in_quotes && CURRENT == QUOTE && RSTRING(value)->ptr[data->ptr+1] == QUOTE) {
           rb_str_concat(row_item, INT2FIX(QUOTE));
+          has_quoting = 1;
           data->ptr += 2;
         } else {
           if(in_quotes && CURRENT == QUOTE) {
@@ -149,6 +162,7 @@ void recursive_parse_field(VALUE self, VALUE new_value);
             break;
           }
           if(CURRENT == BACKSLASH) {
+            has_quoting = 1;
             data->ptr++;
           }
 
@@ -156,7 +170,10 @@ void recursive_parse_field(VALUE self, VALUE new_value);
           data->ptr++;
         }
       }
-      recursive_parse_field(self, row_item);
+      if(!has_quoting && RSTRING(row_item)->ptr[0] == '\0')
+        rb_ivar_set(self, data->result, Qnil);
+      else
+        recursive_parse_field(self, row_item);
     }
     
     

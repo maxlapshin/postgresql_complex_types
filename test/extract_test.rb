@@ -6,7 +6,15 @@ class FinderTest < Test::Unit::TestCase
   def test_parse_array
     assert_equal ["1","2","3","4"], PostgresExtractor.new("{1,2,3,4}").result
   end
-  
+
+  def test_parse_array_with_nil
+    assert_equal ["1",nil,"NULL","4"], PostgresExtractor.new("{1,NULL,\"NULL\",4}").result
+  end
+
+  def test_fast_parse_array_with_nil
+    assert_equal ["1",nil,"NULL","4"], FastPostgresExtractor.new("{1,NULL,\"NULL\",4}").result
+  end
+ 
   def test_fast_parse_array
     assert_equal ["1","2","3","4"], FastPostgresExtractor.new("{1,2,3,4}").result
   end
@@ -23,6 +31,30 @@ class FinderTest < Test::Unit::TestCase
   
   def test_parse_composite_type
     assert_equal ["1","2","3","4"], PostgresExtractor.new("(1,2,3,4)").result
+  end
+
+  def test_parse_composite_type_with_nil
+    assert_equal ["1",nil,"3","4",nil], PostgresExtractor.new("(1,,3,4,)").result
+  end
+  
+  def test_parse_composite_type_with_two_nulls
+    assert_equal [nil,nil,"1"], PostgresExtractor.new("(,,1)").result
+  end
+
+  def test_fast_parse_composite_type_with_two_nulls
+    assert_equal [nil,nil,"1"], FastPostgresExtractor.new("(,,1)").result
+  end
+
+  def test_parse_composite_type_with_four_nulls
+    assert_equal [nil,nil,"1",nil,nil], PostgresExtractor.new("(,,1,,)").result
+  end
+
+  def test_fast_parse_composite_type_with_four_nulls
+    assert_equal [nil,nil,"1",nil,nil], FastPostgresExtractor.new("(,,1,,)").result
+  end
+  
+  def test_fast_parse_composite_type_with_nil
+    assert_equal ["1",nil,"3","4",nil], FastPostgresExtractor.new("(1,,3,4,)").result
   end
   
   def test_fast_parse_composite_type
