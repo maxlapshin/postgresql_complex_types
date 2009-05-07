@@ -170,10 +170,11 @@ void recursive_parse_field(VALUE self, VALUE new_value);
           data->ptr++;
         }
       }
-      if(!has_quoting && RSTRING(row_item)->ptr[0] == '\0')
+      if(!has_quoting && RSTRING(row_item)->ptr[0] == 0) {
         rb_ivar_set(self, data->result, Qnil);
-      else
+      } else {
         recursive_parse_field(self, row_item);
+      }
     }
     
     
