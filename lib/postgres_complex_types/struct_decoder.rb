@@ -5,6 +5,14 @@ module PostgresComplexTypes
     end
     
     module ClassMethods
+      def typecast(obj)
+        if obj.is_a?(String)
+          unmarshall(obj)
+        else
+          nil
+        end
+      end
+      
       def unmarshall(parts)
         parts = (Array(parts) + [nil]*members.size)[0,members.size]
         postprocess(new(*parts))

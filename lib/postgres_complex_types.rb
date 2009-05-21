@@ -8,10 +8,6 @@ rescue LoadError => e
   require 'postgres_complex_types/postgres_extractor'
 end
 
-require 'postgres_complex_types/column'
-require 'postgres_complex_types/adapter'
-require 'postgres_complex_types/schema_statements'
-require 'postgres_complex_types/dumper'
 
 module PostgresComplexTypes
 end
